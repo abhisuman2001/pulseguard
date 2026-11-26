@@ -1,0 +1,20 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build host tools
+        run: make host
+      - name: Unit tests (portable safety core + telemetry protocol)
+        run: make test
+      - name: Reproduce the AI model from simulation
+        run: |
+          make model
+          grep "held-out accuracy" core/pg_model_weights.h
+      - name: Dashboard bridge smoke test against the host emulator
+        run: |
+          ./build/host/pg_emulator & sleep 1
+          python3 host/dashboard/server.py --port 8099 & sleep 2
+          curl -s -N --max-time 3 localhost:8099/events | grep -m1 '"emu":1'

@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PulseGuard Monitor</title>
+<style>
+  :root {
+    --bg: #070b10; --panel: #0e151d; --panel2: #121b25; --line: #1e2a36;
+    --text: #d8e2ec; --muted: #7d8b99; --dim: #4b5866;
+    --paw: #ffd23f; --flow: #3ee08f; --vol: #4cc9f0; --jit: #c792ea;
+    --ok: #3ee08f; --warn: #ffb020; --bad: #ff4d5e; --accent: #4cc9f0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .mono { font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 18px; border-bottom: 1px solid var(--line); background: #0a1017; }
+  .logo { font-weight: 700; letter-spacing: .5px; font-size: 18px; }
+  .logo span { color: var(--accent); }
+  .sub { color: var(--muted); font-size: 12px; }
+  .pill { padding: 3px 10px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); color: var(--muted); }
+  .pill.ok { color: var(--ok); border-color: #1f5a3c; background: #0d2219; }
+  .pill.bad { color: var(--bad); border-color: #6a1f28; background: #2a0d12; }
+  .pill.warn { color: var(--warn); border-color: #6a4a12; background: #2a1d07; }
+  .spacer { flex: 1; }
+  #emu { display: none; background: #3a2a05; color: var(--warn); padding: 6px 18px; font-size: 12px; border-bottom: 1px solid #6a4a12; }
+  #alarmbar { min-height: 0; }
+  .alarm { padding: 8px 18px; font-weight: 700; letter-spacing: .4px; display: flex; gap: 12px; align-items: center; }
+  .alarm.high { background: #5a0f18; color: #fff; animation: blink 1s steps(2) infinite; }
+  .alarm.med { background: #4a3405; color: #ffe2a3; }
+  @keyframes blink { 50% { background: #8a1624; } }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 12px; padding: 12px 18px; }
+  .wave { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 4px; margin-bottom: 10px; position: relative; }
+  .wave h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; justify-content: space-between; }
+  .wave canvas { width: 100%; height: 120px; display: block; }
+  .nums { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
+  .num { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .num .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .num .v { font-size: 30px; font-weight: 700; }
+  .num .u { font-size: 11px; color: var(--dim); }
+  .num.wide { grid-column: span 2; }
+
+  .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 0 18px 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .card h2 { margin: 0 0 2px; font-size: 13px; letter-spacing: .4px; display: flex; justify-content: space-between; align-items: center; }
+  .card .qnx { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; font-size: 13px; }
+  .kv .k { color: var(--muted); }
+  .big { font-size: 26px; font-weight: 700; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; letter-spacing: .4px; }
+  .b-ok { background: #0d2219; color: var(--ok); } .b-warn { background: #2a1d07; color: var(--warn); }
+  .b-bad { background: #2a0d12; color: var(--bad); } .b-info { background: #0b1f2a; color: var(--accent); }
+  canvas#hist { width: 100%; height: 70px; display: block; margin-top: 8px; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 4px 0 8px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+  .proposal { background: var(--panel2); border: 1px dashed #2b4a5a; border-radius: 6px; padding: 8px; margin-top: 8px; font-size: 12px; display: none; }
+  button { font: inherit; font-size: 12px; color: var(--text); background: #16222e; border: 1px solid #263544; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: #2a1d07; border-color: var(--warn); color: var(--warn); }
+  button.danger { border-color: #6a1f28; color: #ff9aa5; }
+  button.primary { background: #0b2a3a; border-color: #2b6a8a; color: #bfe9ff; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  label.sl { display: grid; grid-template-columns: 42px 1fr 44px; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin: 3px 0; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .sec { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; margin-top: 10px; }
+  #log { margin: 0 18px 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; max-height: 150px; overflow: auto; font-size: 12px; }
+  #log div { padding: 2px 0; border-bottom: 1px solid #111a23; }
+  #log .t { color: var(--dim); margin-right: 8px; }
+  @media (max-width: 1100px) { .cards { grid-template-columns: 1fr 1fr; } main { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } header { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="logo">Pulse<span>Guard</span></div>
+    <div class="sub">Mixed-criticality ventilator on QNX 8.0</div>
+  </div>
+  <span id="link" class="pill bad">target offline</span>
+  <span id="sys" class="pill mono">-</span>
+  <div class="spacer"></div>
+  <span class="sub mono" id="clock"></span>
+</header>
+<div id="emu">HOST EMULATOR - not running on QNX, timing figures are NOT real-time measurements. Connect to the QNX target for the real system.</div>
+<div id="alarmbar"></div>
+
+<main>
+  <section>
+    <div class="wave"><h3><span style="color:var(--paw)">Paw - airway pressure</span><span class="mono">cmH2O</span></h3><canvas id="c_paw"></canvas></div>
+    <div class="wave"><h3><span style="color:var(--flow)">Flow</span><span class="mono">L/min</span></h3><canvas id="c_flow"></canvas></div>
+    <div class="wave"><h3><span style="color:var(--vol)">Volume</span><span class="mono">mL</span></h3><canvas id="c_vol"></canvas></div>
+  </section>
+  <aside class="nums">
+    <div class="num"><div class="k">PIP</div><div class="v mono" id="n_pip" style="color:var(--paw)">-</div><div class="u">cmH2O measured</div></div>
+    <div class="num"><div class="k">PEEP</div><div class="v mono" id="n_peep">-</div><div class="u">cmH2O set</div></div>
+    <div class="num"><div class="k">Vt</div><div class="v mono" id="n_vt" style="color:var(--vol)">-</div><div class="u">mL exhaled</div></div>
+    <div class="num"><div class="k">RR</div><div class="v mono" id="n_rr">-</div><div class="u">breaths/min</div></div>
+    <div class="num wide"><div class="k">Control loop jitter (live, worst in last second)</div><div class="v mono" id="n_jit" style="color:var(--jit)">-</div><div class="u" id="n_jit2">us</div></div>
+  </aside>
+</main>
+
+<section class="cards">
+  <div class="card">
+    <h2>Safety core <span id="core_badge" class="badge b-ok">1 kHz</span></h2>
+    <div class="qnx">controld - SCHED_FIFO 60 - pinned with runmask - timer pulses</div>
+    <div class="kv mono">
+      <span class="k">cycles</span><span id="k_cycles">-</span>
+      <span class="k">deadline misses (&gt;200 us)</span><span id="k_miss">-</span>
+      <span class="k">jitter min / max</span><span id="k_jmm">-</span>
+      <span class="k">pinned CPU</span><span id="k_cpu">-</span>
+      <span class="k">controller pid / restarts</span><span id="k_pid">-</span>
+    </div>
+    <canvas id="hist"></canvas>
+    <div class="sub">wake-up lateness histogram, 1 us bins, log scale</div>
+  </div>
+
+  <div class="card">
+    <h2>AI advisor <span id="ai_badge" class="badge b-info">-</span></h2>
+    <div class="qnx">aiguard - SCHED_SPORADIC 30 to 5, 2 ms / 10 ms - read-only telemetry</div>
+    <div class="big" id="ai_dx">-</div>
+    <div class="bar"><i id="ai_conf"></i></div>
+    <div class="kv mono">
+      <span class="k">compliance C</span><span id="ai_c">-</span>
+      <span class="k">resistance R</span><span id="ai_r">-</span>
+      <span class="k">advice received</span><span id="ai_recv">-</span>
+      <span class="k">clamped / rejected</span><span id="ai_cl">-</span>
+      <span class="k">AI CPU time</span><span id="ai_cpu">-</span>
+    </div>
+    <div class="proposal" id="ai_prop">
+      <div><b>AI proposal</b> (already clamped to the safety envelope):</div>
+      <div class="mono" id="ai_prop_txt" style="margin:4px 0 6px"></div>
+      <button class="primary" onclick="cmd({cmd:'accept_ai'})">Clinician: accept</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Watchdog <span id="wd_badge" class="badge b-ok">supervising</span></h2>
+    <div class="qnx">watchdogd - heartbeat pulses - posix_spawn restart</div>
+    <div class="kv mono">
+      <span class="k">controld restarts</span><span id="wd_c">-</span>
+      <span class="k">aiguard restarts</span><span id="wd_a">-</span>
+      <span class="k">sensord / telemetryd</span><span id="wd_o">-</span>
+      <span class="k">detection latency</span><span id="wd_det">-</span>
+      <span class="k">recovery time</span><span id="wd_rec">-</span>
+    </div>
+    <div class="sec">last event</div>
+    <div id="wd_txt" class="mono" style="font-size:12px;margin-top:4px">-</div>
+  </div>
+
+  <div class="card">
+    <h2>Controls</h2>
+    <div class="qnx">every input is clamped by the safety envelope in controld</div>
+    <label class="sl">PIP <input type="range" id="s_pip" min="8" max="35" step="1" value="20"><span class="mono" id="v_pip">20</span></label>
+    <label class="sl">PEEP <input type="range" id="s_peep" min="0" max="15" step="1" value="5"><span class="mono" id="v_peep">5</span></label>
+    <label class="sl">RR <input type="range" id="s_rr" min="6" max="35" step="1" value="15"><span class="mono" id="v_rr">15</span></label>
+    <label class="sl">I:E 1: <input type="range" id="s_ie" min="1" max="4" step="0.5" value="2"><span class="mono" id="v_ie">2</span></label>
+    <div class="row"><button class="primary" onclick="applySettings()">Apply settings</button></div>
+    <div class="sec">Patient / circuit faults</div>
+    <div class="row">
+      <button data-f="1" onclick="toggleFault(this)">Leak</button>
+      <button data-f="2" onclick="toggleFault(this)">Occlusion</button>
+      <button data-f="4" onclick="toggleFault(this)">Stiff lung</button>
+      <button data-f="8" onclick="toggleFault(this)">Disconnect</button>
+    </div>
+    <div class="sec">Prove it: attack the system</div>
+    <div class="row">
+      <button id="b_stress" onclick="toggleStress()">CPU stress</button>
+      <button id="b_rogue" class="danger" onclick="cmd({cmd:'rogue',on:1})">Rogue AI</button>
+      <button class="danger" onclick="cmd({cmd:'crash'})">Kill controller</button>
+    </div>
+  </div>
+</section>
+
+<div id="log"></div>
+
+<script>
+"use strict";
+const DX = ["NORMAL", "CIRCUIT LEAK", "OCCLUSION", "STIFF LUNG", "DISCONNECT"];
+const DX_CLS = ["b-ok", "b-warn", "b-warn", "b-warn", "b-bad"];
+const ALM = [[1, "HIGH PRESSURE - exhale valve opened", "high"], [2, "LOW TIDAL VOLUME", "med"],
+             [4, "PATIENT DISCONNECT", "high"], [8, "CONTROL DEADLINE MISS", "high"],
+             [16, "CONTROLLER LOST - HARDWARE FAIL-SAFE ACTIVE", "high"]];
+const WINDOW_MS = 8000, N = 4000;
+
+const buf = { t: new Float64Array(N), paw: new Float32Array(N), flow: new Float32Array(N),
+              vol: new Float32Array(N), jit: new Float32Array(N), alm: new Uint16Array(N), n: 0, head: 0 };
+let st = null, faults = 0, stressOn = false, lastAlarms = 0, prev = {}, jitWin = [];
+
+function push(s) {
+  const i = buf.head;
+  buf.t[i] = s[0]; buf.paw[i] = s[1]; buf.flow[i] = s[2] * 60; buf.vol[i] = s[3];
+  buf.alm[i] = s[5]; buf.jit[i] = s[6];
+  buf.head = (i + 1) % N; if (buf.n < N) buf.n++;
+}
+
+function $(id) { return document.getElementById(id); }
+function fmt(v, d = 0) { return (v === undefined || v === null || isNaN(v)) ? "-" : Number(v).toFixed(d); }
+function log(msg, cls) {
+  const d = document.createElement("div");
+  d.innerHTML = `<span class="t mono">${new Date().toLocaleTimeString()}</span>`;
+  const sp = document.createElement("span"); sp.textContent = msg; if (cls) sp.style.color = cls;
+  d.appendChild(sp); $("log").prepend(d);
+  while ($("log").children.length > 200) $("log").lastChild.remove();
+}
+
+function cmd(o) {
+  fetch("/cmd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
+    .then(r => { if (!r.ok) log("command failed: " + o.cmd + " (target offline?)", "var(--bad)"); });
+  const names = { crash: "Demo: killing controller process", rogue: "Demo: AI model forced into runaway loop",
+                  accept_ai: "Clinician accepted AI proposal", settings: "Clinician changed settings" };
+  if (names[o.cmd]) log(names[o.cmd], "var(--accent)");
+}
+function applySettings() {
+  cmd({ cmd: "settings", pip: +$("s_pip").value, peep: +$("s_peep").value, rr: +$("s_rr").value, ie: +$("s_ie").value });
+}
+function toggleFault(b) {
+  faults ^= +b.dataset.f; b.classList.toggle("on", (faults & +b.dataset.f) !== 0);
+  cmd({ cmd: "fault", mask: faults }); log(`Fault injection: ${b.textContent} ${(faults & +b.dataset.f) ? "ON" : "OFF"}`, "var(--warn)");
+}
+function toggleStress() {
+  stressOn = !stressOn; cmd({ cmd: "stress", on: stressOn ? 1 : 0 });
+  log(stressOn ? "Demo: CPU stress ON - FIFO prio 55 busy loop on every core except 0 (incl. the control core)" : "CPU stress OFF", "var(--warn)");
+}
+["pip", "peep", "rr", "ie"].forEach(k => $("s_" + k).addEventListener("input", e => $("v_" + k).textContent = e.target.value));
+
+/* ---------- drawing ---------- */
+function fit(c) {
+  const r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(r.height * dpr)) {
+    c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
+  }
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); return [g, r.width, r.height];
+}
+function drawWave(id, arr, color, lo, hi, zero) {
+  const [g, w, h] = fit($(id));
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = "#16212c"; g.lineWidth = 1; g.font = "10px ui-monospace, monospace"; g.fillStyle = "#4b5866";
+  for (let k = 0; k <= 4; k++) {
+    const v = lo + (hi - lo) * k / 4, y = h - 4 - (h - 8) * k / 4;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); g.fillText(v.toFixed(0), 2, y - 2);
+  }
+  if (zero !== undefined) {
+    const y = h - 4 - (h - 8) * (zero - lo) / (hi - lo);
+    g.strokeStyle = "#2a3946"; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+  }
+  if (buf.n < 2) return;
+  const last = (buf.head - 1 + N) % N, tEnd = buf.t[last], tStart = tEnd - WINDOW_MS;
+  g.strokeStyle = color; g.lineWidth = 1.6; g.beginPath();
+  let started = false;
+  for (let j = 0; j < buf.n; j++) {
+    const i = (buf.head - buf.n + j + N) % N;
+    if (buf.t[i] < tStart) continue;
+    const x = (buf.t[i] - tStart) / WINDOW_MS * w;
+    const y = h - 4 - (h - 8) * (Math.max(lo, Math.min(hi, arr[i])) - lo) / (hi - lo);
+    if (!started) { g.moveTo(x, y); started = true; } else g.lineTo(x, y);
+  }
+  g.stroke();
+}
+function drawHist(hist) {
+  const [g, w, h] = fit($("hist"));
+  g.clearRect(0, 0, w, h);
+  if (!hist) return;
+  let last = 0; hist.forEach((v, i) => { if (v) last = i; });
+  const bins = Math.max(16, last + 2), bw = w / bins, mx = Math.log10(Math.max(...hist) + 1) || 1;
+  for (let i = 0; i < bins && i < hist.length; i++) {
+    const v = Math.log10(hist[i] + 1) / mx * (h - 12);
+    g.fillStyle = i === hist.length - 1 ? "#ff4d5e" : "#c792ea";
+    g.fillRect(i * bw + 1, h - 10 - v, Math.max(1, bw - 2), v);
+  }
+  g.fillStyle = "#4b5866"; g.font = "10px ui-monospace, monospace";
+  g.fillText("0 us", 0, h - 1); g.fillText(`${bins} us`, w - 34, h - 1);
+}
+function frame() {
+  drawWave("c_paw", buf.paw, getCss("--paw"), 0, 40);
+  drawWave("c_flow", buf.flow, getCss("--flow"), -120, 120, 0);
+  drawWave("c_vol", buf.vol, getCss("--vol"), 0, 900);
+  requestAnimationFrame(frame);
+}
+const cssCache = {}; function getCss(v) { return cssCache[v] || (cssCache[v] = getComputedStyle(document.documentElement).getPropertyValue(v).trim()); }
+requestAnimationFrame(frame);
+
+/* ---------- state ---------- */
+function onFrame(f) {
+  f.s.forEach(push);
+  const c = f.ctl, ai = f.ai, wd = f.wd || {};
+  $("emu").style.display = f.emu ? "block" : "none";
+  $("sys").textContent = (f.emu ? "HOST EMULATOR" : "QNX 8.0") + ` - ${f.ncpu} CPU`;
+  $("clock").textContent = new Date().toLocaleTimeString();
+
+  // live jitter (worst in last second from samples)
+  f.s.forEach(s => jitWin.push([s[0], Math.abs(s[6])]));
+  const tNow = f.s.length ? f.s[f.s.length - 1][0] : 0;
+  while (jitWin.length && jitWin[0][0] < tNow - 1000) jitWin.shift();
+  const jw = jitWin.reduce((m, x) => Math.max(m, x[1]), 0);
+  $("n_jit").textContent = fmt(jw, 1) + " us";
+  $("n_jit2").textContent = `period 1000 us - all-time max ${fmt(c.jmax, 1)} us - misses ${c.misses}`;
+
+  $("n_pip").textContent = fmt(c.pip, 1); $("n_peep").textContent = fmt(c.set[1], 0);
+  $("n_vt").textContent = fmt(c.vt, 0); $("n_rr").textContent = fmt(c.set[2], 0);
+
+  $("k_cycles").textContent = c.cycles.toLocaleString();
+  $("k_miss").textContent = c.misses; $("k_miss").style.color = c.misses ? "var(--bad)" : "var(--ok)";
+  $("k_jmm").textContent = `${fmt(c.jmin, 1)} / ${fmt(c.jmax, 1)} us`;
+  $("k_cpu").textContent = "CPU " + c.cpu; $("k_pid").textContent = `${c.pid} / ${c.restarts}`;
+  drawHist(c.hist);
+
+  // AI
+  $("ai_dx").textContent = DX[ai.dx] || "-";
+  $("ai_dx").style.color = ai.dx === 0 ? "var(--ok)" : (ai.dx === 4 ? "var(--bad)" : "var(--warn)");
+  $("ai_conf").style.width = (ai.conf * 100).toFixed(0) + "%";
+  $("ai_c").textContent = fmt(ai.C, 1) + " mL/cmH2O"; $("ai_r").textContent = fmt(ai.R, 1) + " cmH2O/L/s";
+  $("ai_recv").textContent = ai.recv; $("ai_cl").textContent = `${ai.clamped} / ${ai.rejected}`;
+  $("ai_cpu").textContent = fmt(ai.cpu_ms, 1) + " ms";
+  let b = $("ai_badge");
+  if (ai.rogue || ai.state === 1) { b.className = "badge b-bad"; b.textContent = "THROTTLED BY SCHEDULER"; }
+  else if (ai.age_ms > 12000) { b.className = "badge b-warn"; b.textContent = "SILENT"; }
+  else { b.className = "badge b-ok"; b.textContent = `OK - ${(ai.conf * 100).toFixed(0)}%`; }
+  $("ai_prop").style.display = ai.has_prop ? "block" : "none";
+  if (ai.has_prop) {
+    const p = ai.prop, s = c.set;
+    const d = (a, b2, u) => a !== b2 ? `<b>${b2.toFixed(1)} -> ${a.toFixed(1)}</b>${u}` : `${a.toFixed(1)}${u}`;
+    $("ai_prop_txt").innerHTML = `PIP ${d(p[0], s[0], "")} &middot; PEEP ${d(p[1], s[1], "")} &middot; RR ${d(p[2], s[2], "")} &middot; I:E 1:${d(p[3], s[3], "")}`;
+  }
+
+  // watchdog
+  if (wd.restarts) {
+    $("wd_c").textContent = wd.restarts[1]; $("wd_a").textContent = wd.restarts[2];
+    $("wd_o").textContent = `${wd.restarts[0]} / ${wd.restarts[3]}`;
+    $("wd_det").textContent = wd.detect_us ? (wd.detect_us / 1000).toFixed(1) + " ms" : "-";
+    $("wd_rec").textContent = wd.recov_us ? (wd.recov_us / 1000).toFixed(1) + " ms" : "-";
+    $("wd_txt").textContent = wd.text || "no events";
+    const recent = wd.age_ms >= 0 && wd.age_ms < 4000;
+    $("wd_badge").className = "badge " + (recent ? "b-warn" : "b-ok");
+    $("wd_badge").textContent = recent ? "RECOVERED" : "supervising";
+  }
+
+  // alarms
+  const recent = f.s.reduce((a, s) => a | s[5], 0);
+  let html = "";
+  ALM.forEach(([bit, txt, lvl]) => { if (recent & bit) html += `<div class="alarm ${lvl}">ALARM - ${txt}</div>`; });
+  if (ai.dx && ai.conf > 0.7 && ai.age_ms < 12000 && !ai.rogue)
+    html += `<div class="alarm med">AI ADVISORY - ${DX[ai.dx]} suspected (${(ai.conf * 100).toFixed(0)}%)${[1, 4].includes(ai.dx) ? " - check the circuit" : ""}</div>`;
+  $("alarmbar").innerHTML = html;
+
+  // event log on transitions
+  if (prev.dx !== undefined && prev.dx !== ai.dx) log(`AI diagnosis: ${DX[prev.dx]} -> ${DX[ai.dx]} (${(ai.conf * 100).toFixed(0)}%)`);
+  if (prev.wdtext !== undefined && wd.text && prev.wdtext !== wd.text) log("Watchdog: " + wd.text, "var(--warn)");
+  if (prev.rec !== undefined && wd.recov_us && prev.rec !== wd.recov_us) log(`Recovered: new controller heartbeat ${(wd.recov_us / 1000).toFixed(1)} ms after detection - settings restored`, "var(--ok)");
+  if (prev.clamped !== undefined && ai.clamped > prev.clamped) log(`Safety envelope clamped an AI proposal (#${ai.clamped})`, "var(--warn)");
+  const tms = Date.now();
+  if (prev.misses !== undefined && c.misses > prev.misses && tms - (prev.missLog || 0) > 10000) {
+    log(`Deadline misses: ${c.misses} total (worst ${fmt(c.jmax, 1)} us)`, "var(--bad)");
+    prev.missLog = tms;
+  }
+  prev = { dx: ai.dx, wdtext: wd.text, rec: wd.recov_us, clamped: ai.clamped, misses: c.misses, missLog: prev.missLog };
+
+  faults = c.faults;   // the target is the source of truth
+  document.querySelectorAll("button[data-f]").forEach(b => b.classList.toggle("on", (faults & +b.dataset.f) !== 0));
+  stressOn = !!f.stress; $("b_stress").classList.toggle("on", stressOn);
+  $("b_rogue").classList.toggle("on", !!ai.rogue);
+}
+
+const es = new EventSource("/events");
+es.onmessage = ev => {
+  const m = JSON.parse(ev.data);
+  if ("link" in m) {
+    $("link").className = "pill " + (m.link ? "ok" : "bad");
+    $("link").textContent = m.link ? "target linked" : "target offline";
+    if (m.msg) log(m.msg, m.link ? "var(--ok)" : "var(--muted)");
+    return;
+  }
+  onFrame(m);
+};
+es.onerror = () => { $("link").className = "pill bad"; $("link").textContent = "dashboard server offline"; };
+log("Dashboard started");
+</script>
+</body>
+</html>

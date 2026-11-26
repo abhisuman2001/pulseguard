@@ -1,0 +1,4 @@
+build/
+vm/
+__pycache__/
+*.o
