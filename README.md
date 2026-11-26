@@ -2,7 +2,7 @@
 
 **A mixed-criticality ventilator controller on QNX 8.0. The AI may advise, but the operating system decides whether it can ever hurt the patient.**
 
-[![ci](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+[![ci](https://github.com/abhisuman2001/pulseguard/actions/workflows/ci.yml/badge.svg)](https://github.com/abhisuman2001/pulseguard/actions/workflows/ci.yml)
 QNX 8.0 · x86_64 (QEMU) and aarch64le · C11 · Apache-2.0 · Category: **Robotics & Medical**
 
 Medical devices are adding AI quickly: waveform classifiers, closed-loop suggestions, "smart" alarms. The hard question is not whether the model is accurate. It is this: what happens to the patient when the model is wrong, slow, hung, or malicious? PulseGuard answers with architecture instead of hope. A 1 kHz pressure-control ventilation loop runs as a hard real-time process. An AI respiratory-mechanics advisor runs next to it, fenced in by QNX's scheduler, memory protection, and message-passing contracts. In the demo we try to break it four different ways, live.
